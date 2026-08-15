@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy:      #0a1628;
+    --blue:      #0057ff;
+    --blue-lt:   #e8f0fe;
+    --bg:        #f5f7fa;
+    --white:     #ffffff;
+    --border:    #e2e8f0;
+    --text:      #0a1628;
+    --muted:     #64748b;
+    --profit:    #0d7a4e;
+    --profit-bg: #e6f7f1;
+    --loss:      #c0392b;
+    --loss-bg:   #fdecea;
+    --warn-bg:   #fff8f0;
+    --warn-br:   #fde8c8;
+    --warn-tx:   #92400e;
+    --mono:      'JetBrains Mono','Fira Mono',monospace;
+    --sans:      'Inter',system-ui,sans-serif;
+    --radius:    8px;
+    --shadow:    0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--sans);
+         font-size: 14px; min-height: 100vh; line-height: 1.6; }
+
+  /* ── Nav ── */
+  .navbar { background: var(--navy); padding: 0 2rem; height: 56px;
+            display: flex; align-items: center; justify-content: space-between; }
+  .navbar-brand { display: flex; align-items: center; gap: 10px; color: #fff;
+                  font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .navbar-brand .dot { width: 8px; height: 8px; background: var(--blue); border-radius: 50%; }
+  .navbar-tag { font-size: 11px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6);
+                padding: 3px 10px; border-radius: 20px; letter-spacing: 0.04em; }
+
+  /* ── Layout ── */
+  .page { max-width: 1000px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  .page-header { margin-bottom: 2rem; }
+  .page-header h1 { font-size: 1.6rem; font-weight: 700; color: var(--navy);
+                    letter-spacing: -0.02em; margin-bottom: 6px; }
+  .page-header p { color: var(--muted); font-size: 14px; }
+
+  /* ── Step labels ── */
+  .step-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .step-num { width: 22px; height: 22px; background: var(--navy); color: #fff; border-radius: 50%;
+              font-size: 11px; font-weight: 600; display: flex; align-items: center;
+              justify-content: center; flex-shrink: 0; }
+  .step-text { font-size: 12px; font-weight: 600; color: var(--muted);
+               text-transform: uppercase; letter-spacing: 0.07em; }
+  .step-opt { font-size: 11px; color: #9aa5b5; text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+  /* ── Card ── */
+  .card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
+          padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow); }
+
+  /* ── Inputs ── */
+  .input-row { display: flex; gap: 8px; align-items: center; }
+  .input-row input { flex: 1; border: 1px solid var(--border); border-radius: var(--radius);
+                     padding: 9px 12px; font-size: 13px; font-family: var(--mono);
+                     color: var(--text); outline: none; background: var(--bg);
+                     transition: border-color .15s, box-shadow .15s; }
+  .input-row input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,87,255,.1); }
+  .input-row input::placeholder { color: #b0bac9; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  .settings-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 16px; }
+  .field-label { font-size: 11px; font-weight: 600; color: var(--muted);
+                 text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; display: block; }
+  select { width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 9px 12px; font-size: 13px; font-family: var(--sans); color: var(--text);
+           background: var(--white); outline: none; cursor: pointer; }
+  select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,87,255,.1); }
+  .check-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; }
+  .check-row input { margin-top: 4px; accent-color: var(--blue); cursor: pointer; }
+  .check-row label { font-size: 13px; color: var(--text); cursor: pointer; }
+  .check-row label span { display: block; font-size: 11px; color: var(--muted); }
+
+  /* ── Drop zone ── */
+  .dropzone { border: 1.5px dashed var(--border); border-radius: var(--radius);
+              padding: 2.25rem 1.5rem; text-align: center; cursor: pointer;
+              transition: border-color .2s, background .2s; margin-bottom: 1.25rem;
+              position: relative; background: var(--white); box-shadow: var(--shadow); }
+  .dropzone:hover, .dropzone.drag-over { border-color: var(--blue); background: var(--blue-lt); }
+  .dropzone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer;
+                               width: 100%; height: 100%; }
+  .upload-icon { width: 44px; height: 44px; background: var(--blue-lt); border-radius: 10px;
+                 display: flex; align-items: center; justify-content: center;
+                 margin: 0 auto 12px; font-size: 20px; }
+  .dropzone p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .dropzone p strong { color: var(--navy); }
+  .file-badge { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+                font-size: 12px; font-family: var(--mono); color: var(--blue);
+                background: var(--blue-lt); border-radius: 5px; padding: 4px 12px; }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+         padding: 9px 18px; border-radius: var(--radius); border: none; font-size: 13px;
+         font-weight: 500; cursor: pointer; transition: all .15s; font-family: var(--sans); }
+  .btn:active { transform: scale(.98); }
+  .btn-primary { background: var(--blue); color: #fff; width: 100%; font-size: 14px;
+                 font-weight: 600; padding: 12px; letter-spacing: .01em; }
+  .btn-primary:hover:not(:disabled) { background: #0046cc; }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-outline { background: var(--white); border: 1px solid var(--border); color: var(--muted);
+                 padding: 6px 14px; font-size: 12px; }
+  .btn-outline:hover { border-color: var(--navy); color: var(--navy); }
+
+  /* ── Loading / error ── */
+  .loading { display: none; text-align: center; padding: 2.5rem; }
+  .loading.visible { display: block; }
+  .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--blue);
+             border-radius: 50%; animation: spin .75s linear infinite; margin: 0 auto 14px; }
+  .loading p { color: var(--muted); font-size: 13px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box { background: var(--loss-bg); border: 1px solid #f5c6c2; border-radius: var(--radius);
+               padding: 12px 16px; color: var(--loss); font-size: 13px; display: none; margin-bottom: 1rem; }
+  .error-box.visible { display: block; }
+
+  /* ── Results ── */
+  #results { display: none; }
+  #results.visible { display: block; }
+  .divider { height: 1px; background: var(--border); margin: 1.75rem 0; }
+  .results-header { display: flex; align-items: center; justify-content: space-between;
+                    margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; }
+  .results-header h2 { font-size: 1rem; font-weight: 600; color: var(--navy); }
+  .run-config { font-size: 11px; font-family: var(--mono); color: var(--muted);
+                background: var(--white); border: 1px solid var(--border);
+                padding: 4px 10px; border-radius: 5px; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem;
+          overflow-x: auto; }
+  .tab { background: none; border: none; padding: 10px 16px; font-size: 13px; font-weight: 500;
+         color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+         white-space: nowrap; font-family: var(--sans); transition: color .15s, border-color .15s; }
+  .tab:hover { color: var(--navy); }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Metrics ── */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
+             gap: 12px; margin-bottom: 1.25rem; }
+  .metric { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 1.1rem 1.25rem; box-shadow: var(--shadow); }
+  .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+                  letter-spacing: .07em; font-weight: 500; margin-bottom: 8px; }
+  .metric-value { font-size: 1.3rem; font-weight: 700; font-family: var(--mono);
+                  letter-spacing: -.02em; color: var(--navy); }
+  .metric-value.profit { color: var(--profit); }
+  .metric-value.loss   { color: var(--loss); }
+  .metric-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
+
+  /* ── AI box ── */
+  .ai-box { background: var(--white); border: 1px solid var(--border); border-left: 3px solid var(--blue);
+            border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow); }
+  .ai-box-label { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase;
+                  letter-spacing: .07em; margin-bottom: 10px; }
+  .ai-box p { font-size: 14px; color: var(--text); line-height: 1.75; white-space: pre-wrap; }
+
+  /* ── Tables ── */
+  .table-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
+                box-shadow: var(--shadow); overflow: hidden; margin-bottom: 1.25rem; }
+  .table-card-header { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 13px;
+                       font-weight: 600; color: var(--navy); display: flex; align-items: center;
+                       justify-content: space-between; gap: 10px; }
+  .table-card-header .sub { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); font-weight: 600; padding: 9px 12px; background: var(--bg);
+       border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle;
+       color: var(--text); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #fafbfd; }
+  .num { font-family: var(--mono); font-size: 12px; text-align: right; }
+  th.num { text-align: right; }
+  tfoot td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--border); }
+
+  .badge { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600;
+           font-family: var(--mono); padding: 2px 9px; border-radius: 5px; }
+  .badge.profit { background: var(--profit-bg); color: var(--profit); }
+  .badge.loss   { background: var(--loss-bg);   color: var(--loss); }
+  .badge.neutral{ background: var(--bg);        color: var(--muted); }
+
+  .tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px;
+         border-radius: 4px; letter-spacing: .03em; }
+  .tag.in  { background: var(--profit-bg); color: var(--profit); }
+  .tag.out { background: var(--loss-bg);   color: var(--loss); }
+  .tag.st  { background: #eef2f7; color: #475569; }
+  .tag.lt  { background: var(--blue-lt); color: #1e40af; }
+
+  /* ── Flags ── */
+  .flags-card { background: var(--warn-bg); border: 1px solid var(--warn-br); border-radius: var(--radius);
+                padding: 1.1rem 1.25rem; font-size: 13px; color: var(--warn-tx); line-height: 1.8;
+                margin-bottom: 1.25rem; }
+  .flags-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+                 color: #b45309; margin-bottom: 8px; }
+  .ok-card { background: var(--profit-bg); border: 1px solid #bfe8d7; border-radius: var(--radius);
+             padding: 1rem 1.25rem; font-size: 13px; color: var(--profit); margin-bottom: 1.25rem; }
+
+  @media (max-width: 560px) {
+    .page { padding: 1rem 1rem 3rem; }
+    .navbar { padding: 0 1rem; }
+    .metric-value { font-size: 1.05rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-brand"><div class="dot"></div>Trade Analyzer</div>
+  <span class="navbar-tag">SPOT · LOT ACCOUNTING</span>
+</nav>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>Crypto PnL Analysis</h1>
+    <p>Deterministic lot matching with a full audit trail. Every number below is computed locally and can be tied out line by line.</p>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="step-label">
+    <div class="step-num">1</div>
+    <div class="step-text">Upload your trade file</div>
+  </div>
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFileSelect(this.files[0])" />
+    <div class="upload-icon">&#128194;</div>
+    <p><strong>Click to upload</strong> or drag and drop</p>
+    <p>CSV or Excel &middot; type, timestamp, base_asset, base_asset_amount, price,<br>counter_asset, counter_asset_amount, exchange, note<br>
+       <span style="font-size:12px">Optional: <code>fmv_usd</code> &mdash; required for crypto-to-crypto trades</span></p>
+    <div id="file-name" class="file-badge" style="display:none;">
+      <span>&#128196;</span><span id="file-name-text"></span>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step-label">
+    <div class="step-num">2</div>
+    <div class="step-text">Accounting settings</div>
+  </div>
+  <div class="card">
+    <div class="settings-grid">
+      <div>
+        <label class="field-label" for="method">Accounting method</label>
+        <select id="method">
+          <option value="FIFO" selected>FIFO &mdash; first in, first out</option>
+          <option value="LIFO">LIFO &mdash; last in, first out</option>
+          <option value="HIFO">HIFO &mdash; highest in, first out</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Stablecoin treatment</label>
+        <div class="check-row">
+          <input type="checkbox" id="track-stables" />
+          <label for="track-stables">Track stablecoin lots
+            <span>Off = treated as cash. On = USDT/USDC get their own lots and realize gain/loss.</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step-label">
+    <div class="step-num">3</div>
+    <div class="step-text">Anthropic API key <span class="step-opt">&mdash; optional, only for the written summary</span></div>
+  </div>
+  <div class="card">
+    <div class="input-row">
+      <input type="password" id="api-key" placeholder="sk-ant-api03-...  (leave blank to skip)" autocomplete="off" />
+      <button class="btn btn-outline" onclick="toggleKeyVisibility()">Show</button>
+    </div>
+    <p class="hint">All PnL math runs locally in your browser. The key is only used to generate the narrative commentary.</p>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="step-label">
+    <div class="step-num">4</div>
+    <div class="step-text">Run</div>
+  </div>
+  <button class="btn btn-primary" id="analyze-btn" onclick="runAnalysis()" disabled>Run Lot Matching</button>
+
+  <div class="error-box" id="error-box"></div>
+  <div class="loading" id="loading"><div class="spinner"></div><p id="loading-text">Matching lots...</p></div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="divider"></div>
+
+    <div class="results-header">
+      <h2>Results</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="run-config" id="run-config"></span>
+        <button class="btn btn-outline" onclick="resetApp()">New file</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('summary',this)">Summary</button>
+      <button class="tab" onclick="showTab('closed',this)">Closed Lots</button>
+      <button class="tab" onclick="showTab('open',this)">Open Lots</button>
+      <button class="tab" onclick="showTab('ledger',this)">Sub-Ledger</button>
+      <button class="tab" onclick="showTab('checks',this)">Checks</button>
+    </div>
+
+    <!-- Summary -->
+    <div class="tab-panel active" id="panel-summary">
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Total realized</div>
+          <div class="metric-value" id="m-total">&mdash;</div>
+          <div class="metric-sub" id="m-total-sub"></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Short term</div>
+          <div class="metric-value" id="m-short">&mdash;</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Long term</div>
+          <div class="metric-value" id="m-long">&mdash;</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Open cost basis</div>
+          <div class="metric-value" id="m-open">&mdash;</div>
+          <div class="metric-sub" id="m-open-sub"></div>
+        </div>
+      </div>
+
+      <div class="ai-box" id="ai-box" style="display:none;">
+        <div class="ai-box-label">&#10022; AI commentary</div>
+        <p id="ai-summary"></p>
+      </div>
+
+      <div class="table-card">
+        <div class="table-card-header">Realized gain / loss by asset</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Asset</th><th class="num">Disposed qty</th><th class="num">Cost basis</th>
+              <th class="num">Proceeds</th><th class="num">Short term</th>
+              <th class="num">Long term</th><th class="num">Total RGL</th>
+            </tr></thead>
+            <tbody id="tb-realized"></tbody>
+            <tfoot id="tf-realized"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-card-header">Holdings by asset <span class="sub">cost basis only &mdash; no market price feed</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Asset</th><th class="num">Inflow</th><th class="num">Outflow</th>
+              <th class="num">Balance</th><th class="num">Open cost basis</th><th class="num">Open lots</th>
+            </tr></thead>
+            <tbody id="tb-holdings"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Closed lots -->
+    <div class="tab-panel" id="panel-closed">
+      <div class="table-card">
+        <div class="table-card-header">
+          <span>Closed lots <span class="sub">one row per disposal &times; acquisition lot match</span></span>
+          <button class="btn btn-outline" onclick="downloadClosed()">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Lot ID</th><th>Asset</th>
+              <th>Disposal ID</th><th>Disposal date</th><th class="num">Disposal rate</th>
+              <th>Acq ID</th><th>Acq date</th><th class="num">Acq rate</th>
+              <th class="num">Begin lot</th><th class="num">Matched</th><th class="num">End lot</th>
+              <th class="num">Cost basis</th><th class="num">Proceeds</th>
+              <th class="num">Realized</th><th>Period</th>
+            </tr></thead>
+            <tbody id="tb-closed"></tbody>
+            <tfoot id="tf-closed"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Open lots -->
+    <div class="tab-panel" id="panel-open">
+      <div class="table-card">
+        <div class="table-card-header">Open lots <span class="sub">unmatched acquisitions remaining at period end</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Lot ID</th><th>Asset</th><th>Exchange</th><th>Acq ID</th><th>Acq date</th>
+              <th class="num">Acq qty</th><th class="num">Allocated</th><th class="num">Remaining</th>
+              <th class="num">Unit cost</th><th class="num">Remaining basis</th><th>Period</th>
+            </tr></thead>
+            <tbody id="tb-open"></tbody>
+            <tfoot id="tf-open"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-ledger -->
+    <div class="tab-panel" id="panel-ledger">
+      <div class="table-card">
+        <div class="table-card-header">
+          <span>Sub-ledger <span class="sub">two legs per transaction &mdash; each pair nets to zero</span></span>
+          <button class="btn btn-outline" onclick="downloadLedger()">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Txn</th><th>Leg</th><th>Date</th><th>Asset</th><th>Dir</th>
+              <th class="num">Quantity</th><th class="num">Unit price</th><th class="num">Fiat value</th>
+              <th>Price source</th><th>Exchange</th><th>Note</th>
+            </tr></thead>
+            <tbody id="tb-ledger"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Checks -->
+    <div class="tab-panel" id="panel-checks">
+      <div id="checks-content"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ===================================================================
+   CONFIG - asset classification and hardcoded parity rates
+   =================================================================== */
+
+// Assets treated as pure cash: rate is always exactly 1.00, never gain/loss
+const FIAT_ASSETS = ['USD','ZUSD','EUR','ZEUR','GBP','JPY','CAD','AUD','CHF','SGD','HKD'];
+
+// Stablecoins are crypto, but priced at a fixed parity rate (from the parity bible)
+const STABLE_RATES = { USDT: 0.99917204, USDC: 0.99972256 };
+
+// Holding period threshold - 365 days separates short from long term
+const LONG_TERM_DAYS = 365;
+
+// Tolerance for floating-point quantity comparisons
+const EPS = 1e-9;
+
+function isFiat(a)   { return FIAT_ASSETS.includes(String(a).toUpperCase()); }
+function isStable(a) { return STABLE_RATES[String(a).toUpperCase()] !== undefined; }
+
+// Returns the USD rate for an asset, or null if it needs an external price
+function knownRate(a) {
+  const u = String(a).toUpperCase();
+  if (isFiat(u))   return 1.0;
+  if (isStable(u)) return STABLE_RATES[u];
+  return null;
+}
+
+/* ===================================================================
+   STATE
+   =================================================================== */
+let parsedRows = [];   // raw rows from the uploaded file
+let engineOut  = null; // result of the last run, kept for CSV export
+
+/* ===================================================================
+   FILE HANDLING
+   =================================================================== */
+
+function toggleKeyVisibility() {
+  const input = document.getElementById('api-key');
+  const btn = event.target;
+  const hidden = input.type === 'password';
+  input.type = hidden ? 'text' : 'password';
+  btn.textContent = hidden ? 'Hide' : 'Show';
+}
+
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]);
+});
+
+function handleFileSelect(file) {
+  if (!file) return;
+  clearError();
+
+  document.getElementById('file-name-text').textContent = file.name;
+  document.getElementById('file-name').style.display = 'inline-flex';
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  if (ext === 'csv') {
+    reader.onload = e => { parsedRows = parseCSV(e.target.result); checkReady(); };
+    reader.readAsText(file);
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    reader.onload = e => {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      // raw:false makes SheetJS return formatted strings, so dates stay readable
+      parsedRows = normalizeRows(XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }));
+      checkReady();
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    showError('Please upload a .csv, .xlsx, or .xls file.');
+  }
+}
+
+// Splits CSV text into row objects, respecting quoted fields that contain commas
+function parseCSV(text) {
+  const lines = text.replace(/\r/g,'').trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = splitCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+  return lines.slice(1).map(line => {
+    const vals = splitCSVLine(line);
+    const row = {};
+    headers.forEach((h, i) => { row[h] = (vals[i] || '').trim(); });
+    return row;
+  });
+}
+
+// Handles quoted fields so "1,234" does not split into two columns
+function splitCSVLine(line) {
+  const out = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; continue; }
+    if (c === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+// Excel headers come through with original casing - lowercase them to match
+function normalizeRows(rows) {
+  return rows.map(r => {
+    const o = {};
+    Object.keys(r).forEach(k => { o[k.toLowerCase().trim()] = String(r[k]).trim(); });
+    return o;
+  });
+}
+
+// Looks up a value under any of several possible column names
+function pick(row, names) {
+  for (const n of names) {
+    if (row[n] !== undefined && String(row[n]).trim() !== '') return String(row[n]).trim();
+  }
+  return '';
+}
+
+// Strips currency symbols and thousands separators before parsing
+function num(v) {
+  if (v === '' || v === undefined || v === null) return NaN;
+  return parseFloat(String(v).replace(/[$,\s]/g, ''));
+}
+
+function parseDate(v) {
+  const s = String(v).trim();
+  let d = new Date(s.includes(' ') && !s.includes('T') ? s.replace(' ', 'T') : s);
+  if (isNaN(d.getTime())) d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function checkReady() {
+  document.getElementById('analyze-btn').disabled = parsedRows.length === 0;
+}
+
+/* ===================================================================
+   STAGE 1 - BUILD THE SUB-LEDGER
+   Every transaction becomes exactly two legs that net to zero.
+   =================================================================== */
+
+function buildLedger(rows) {
+  const legs = [];
+  const flags = [];
+  let seq = 0;
+
+  rows.forEach((row, i) => {
+    const txnId = 'T' + String(i + 1).padStart(3, '0');
+
+    const typeRaw = pick(row, ['type','side','action','transaction type']).toLowerCase();
+    const isBuy  = /buy|acquisition|acquire|purchase/.test(typeRaw);
+    const isSell = /sell|disposal|dispose|sale/.test(typeRaw);
+    if (!isBuy && !isSell) {
+      flags.push(txnId + ': unrecognised type "' + (typeRaw || '(blank)') + '" - row skipped.');
+      return;
+    }
+
+    const dateVal = pick(row, ['timestamp','date','datetime','time','trade date']);
+    const date = parseDate(dateVal);
+    if (!date) { flags.push(txnId + ': could not read date "' + dateVal + '" - row skipped.'); return; }
+
+    const baseAsset = pick(row, ['base_asset','base asset','baseasset','asset','asset code']).toUpperCase();
+    const baseQty   = num(pick(row, ['base_asset_amount','base asset amount','amount','quantity','qty']));
+    const counterAsset = pick(row, ['counter_asset','counter asset','quote_asset','quote asset','currency']).toUpperCase();
+    const counterQty   = num(pick(row, ['counter_asset_amount','counter asset amount','total','proceeds','cost']));
+    const exchange = pick(row, ['exchange','venue','provider','provider name','account','account name']);
+    const note     = pick(row, ['note','notes','memo','description']);
+
+    if (!baseAsset || !(baseQty > 0)) {
+      flags.push(txnId + ': missing base asset or amount - row skipped.'); return;
+    }
+
+    /* --- Price the transaction ---
+       Rule of precedence:
+       1. If the counter asset is fiat or a stablecoin, it anchors the fiat value.
+       2. Otherwise (crypto-to-crypto) we need an explicit fmv_usd for the base asset.
+       3. If neither exists, we cannot price it - flag and exclude. Never guess. */
+    const cRate = knownRate(counterAsset);
+    let fiatValue = null, priceSource = '';
+
+    if (cRate !== null && counterQty > 0) {
+      fiatValue = counterQty * cRate;
+      priceSource = isFiat(counterAsset) ? 'fiat leg' : counterAsset + ' parity @ ' + cRate;
+    } else {
+      const fmv = num(pick(row, ['fmv_usd','fmv','base_fmv_usd','usd_price','fair market value']));
+      if (fmv > 0) {
+        fiatValue = baseQty * fmv;
+        priceSource = 'fmv_usd column';
+      } else {
+        flags.push(txnId + ': ' + baseAsset + '/' + counterAsset +
+                   ' has no fiat or stablecoin leg and no fmv_usd - excluded from PnL.');
+        return;
+      }
+    }
+
+    const baseUnitPrice    = fiatValue / baseQty;
+    const counterUnitPrice = counterQty > 0 ? fiatValue / counterQty : 0;
+
+    // A buy takes the counter asset out and brings the base asset in; a sell is the reverse.
+    const baseDir    = isBuy ? 'in'  : 'out';
+    const counterDir = isBuy ? 'out' : 'in';
+
+    const mk = (legNo, asset, q, unitPrice, dir, src) => ({
+      txnId: txnId, legNo: legNo, seq: seq++, date: date, ts: date.getTime(),
+      asset: asset, qty: q, unitPrice: unitPrice, dir: dir,
+      fiatValue: (dir === 'in' ? 1 : -1) * (q * unitPrice),
+      priceSource: src, exchange: exchange, note: note
+    });
+
+    // Leg ordering follows the money: what leaves first, then what arrives.
+    if (isBuy) {
+      legs.push(mk(1, counterAsset, counterQty, counterUnitPrice, counterDir, priceSource));
+      legs.push(mk(2, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource));
+    } else {
+      legs.push(mk(1, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource));
+      legs.push(mk(2, counterAsset, counterQty, counterUnitPrice, counterDir, priceSource));
+    }
+  });
+
+  return { legs: legs, flags: flags };
+}
+
+// Parity control: the two legs of each transaction must sum to zero
+function parityCheck(legs) {
+  const byTxn = {};
+  legs.forEach(l => { (byTxn[l.txnId] = byTxn[l.txnId] || []).push(l); });
+  const breaks = [];
+  Object.keys(byTxn).forEach(txnId => {
+    const net = byTxn[txnId].reduce((s, l) => s + l.fiatValue, 0);
+    if (Math.abs(net) > 0.01) breaks.push({ txnId: txnId, net: net });
+  });
+  return breaks;
+}
+
+/* ===================================================================
+   STAGE 2 - LOT MATCHING
+   The only difference between FIFO, LIFO and HIFO is the sort order
+   of the available lot queue. The matching loop itself is identical.
+   =================================================================== */
+
+function lotComparator(method) {
+  if (method === 'LIFO') return (a, b) => b.acqTs - a.acqTs;           // newest first
+  if (method === 'HIFO') return (a, b) => (b.unitCost - a.unitCost)    // dearest first
+                                       || (a.acqTs - b.acqTs);        // tie-break: oldest
+  return (a, b) => a.acqTs - b.acqTs;                                  // FIFO: oldest first
+}
+
+function matchLots(legs, method, trackStables) {
+  // Fiat never creates lots. Stablecoins only if the user opted in.
+  const tracked = l => !isFiat(l.asset) && (trackStables || !isStable(l.asset));
+
+  // Chronological order matters - lot matching is path dependent
+  const events = legs.filter(tracked).sort((a, b) => (a.ts - b.ts) || (a.seq - b.seq));
+
+  const lotsByAsset = {};
+  const closed = [];
+  const unmatched = [];
+  let lotSeq = 0;
+
+  for (const ev of events) {
+
+    if (ev.dir === 'in') {
+      // An inflow opens a new lot at the back of the queue
+      (lotsByAsset[ev.asset] = lotsByAsset[ev.asset] || []).push({
+        lotId: 'L' + String(++lotSeq).padStart(3, '0'),
+        asset: ev.asset, acqId: ev.txnId, acqDate: ev.date, acqTs: ev.ts,
+        acqQty: ev.qty, remaining: ev.qty, unitCost: ev.unitPrice,
+        exchange: ev.exchange
+      });
+
+    } else {
+      // An outflow consumes lots in method order until the quantity is satisfied
+      let need = ev.qty;
+      const pool = (lotsByAsset[ev.asset] || [])
+        .filter(l => l.remaining > EPS)
+        .sort(lotComparator(method));
+
+      for (const lot of pool) {
+        if (need <= EPS) break;
+
+        const beginning = lot.remaining;
+        const matched   = Math.min(need, lot.remaining);
+        const basis     = matched * lot.unitCost;
+        const proceeds  = matched * ev.unitPrice;
+        const days      = (ev.ts - lot.acqTs) / 86400000;
+
+        lot.remaining -= matched;
+        need          -= matched;
+
+        closed.push({
+          lotId: lot.lotId, asset: ev.asset,
+          disposalId: ev.txnId, disposalDate: ev.date, disposalRate: ev.unitPrice,
+          acqId: lot.acqId, acqDate: lot.acqDate, acqRate: lot.unitCost,
+          beginningLot: beginning, matched: matched, endingLot: lot.remaining,
+          costBasis: basis, proceeds: proceeds, realized: proceeds - basis,
+          holdingPeriod: days >= LONG_TERM_DAYS ? 'Long' : 'Short',
+          exchange: ev.exchange
+        });
+      }
+
+      // Selling more than was ever acquired - the classic incomplete-history symptom
+      if (need > 1e-6) unmatched.push({ txnId: ev.txnId, asset: ev.asset, qty: need, date: ev.date });
+    }
+  }
+
+  const openLots = [];
+  Object.keys(lotsByAsset).forEach(a => {
+    lotsByAsset[a].forEach(l => { if (l.remaining > EPS) openLots.push(l); });
+  });
+
+  return { closed: closed, openLots: openLots, unmatched: unmatched };
+}
+
+/* ===================================================================
+   STAGE 3 - AGGREGATION
+   =================================================================== */
+
+function summarise(legs, closed, openLots, trackStables) {
+  // Realized gain/loss rolled up by asset, split by holding period
+  const realized = {};
+  closed.forEach(c => {
+    const r = realized[c.asset] = realized[c.asset] ||
+      { asset: c.asset, qty: 0, basis: 0, proceeds: 0, short: 0, long: 0, total: 0 };
+    r.qty      += c.matched;
+    r.basis    += c.costBasis;
+    r.proceeds += c.proceeds;
+    r.total    += c.realized;
+    if (c.holdingPeriod === 'Long') r.long += c.realized; else r.short += c.realized;
+  });
+
+  // Quantity inflow/outflow per asset - the reconciliation backbone
+  const holdings = {};
+  legs.forEach(l => {
+    const h = holdings[l.asset] = holdings[l.asset] ||
+      { asset: l.asset, inflow: 0, outflow: 0, openBasis: 0, openLots: 0, tracked: false };
+    if (l.dir === 'in') h.inflow += l.qty; else h.outflow += l.qty;
+    h.tracked = !isFiat(l.asset) && (trackStables || !isStable(l.asset));
+  });
+  openLots.forEach(l => {
+    const h = holdings[l.asset];
+    if (h) { h.openBasis += l.remaining * l.unitCost; h.openLots += 1; }
+  });
+
+  const rArr = Object.keys(realized).map(k => realized[k]).sort((a,b) => a.asset.localeCompare(b.asset));
+  const hArr = Object.keys(holdings).map(k => holdings[k]).sort((a,b) => a.asset.localeCompare(b.asset));
+  return { realized: rArr, holdings: hArr };
+}
+
+/* ===================================================================
+   ORCHESTRATION
+   =================================================================== */
+
+async function runAnalysis() {
+  clearError();
+  document.getElementById('results').classList.remove('visible');
+  showLoading(true, 'Matching lots...');
+
+  try {
+    const method       = document.getElementById('method').value;
+    const trackStables = document.getElementById('track-stables').checked;
+
+    // Stage 1 - sub-ledger
+    const built = buildLedger(parsedRows);
+    if (!built.legs.length) throw new Error('No usable transactions found. Check the column headers in your file.');
+    const parityBreaks = parityCheck(built.legs);
+
+    // Stage 2 - lot matching
+    const matched = matchLots(built.legs, method, trackStables);
+
+    // Stage 3 - aggregation
+    const agg = summarise(built.legs, matched.closed, matched.openLots, trackStables);
+
+    engineOut = {
+      legs: built.legs, flags: built.flags, parityBreaks: parityBreaks,
+      closed: matched.closed, openLots: matched.openLots, unmatched: matched.unmatched,
+      realized: agg.realized, holdings: agg.holdings,
+      method: method, trackStables: trackStables
+    };
+
+    render(engineOut);
+    document.getElementById('results').classList.add('visible');
+
+    // Optional narrative - Claude only writes prose, it never touches the numbers
+    const apiKey = document.getElementById('api-key').value.trim();
+    if (apiKey.indexOf('sk-') === 0) {
+      showLoading(true, 'Writing commentary...');
+      await addCommentary(apiKey, engineOut);
+    }
+
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+/* ===================================================================
+   RENDERING
+   =================================================================== */
+
+const money = n => (n < 0 ? '-' : '') + '$' +
+  Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const signed = n => (n >= 0 ? '+' : '-') + '$' +
+  Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const qty = n => Number(n.toFixed(8)).toLocaleString('en-US', { maximumFractionDigits: 8 });
+const dstr = d => d.toISOString().slice(0, 10);
+const cls = n => n > 0 ? 'profit' : n < 0 ? 'loss' : 'neutral';
+
+function render(o) {
+  const totalRealized = o.closed.reduce((s, c) => s + c.realized, 0);
+  const totalShort    = o.closed.filter(c => c.holdingPeriod === 'Short').reduce((s, c) => s + c.realized, 0);
+  const totalLong     = o.closed.filter(c => c.holdingPeriod === 'Long').reduce((s, c) => s + c.realized, 0);
+  const openBasis     = o.openLots.reduce((s, l) => s + l.remaining * l.unitCost, 0);
+
+  document.getElementById('run-config').textContent =
+    o.method + ' \u00b7 ' + (o.trackStables ? 'stables tracked' : 'stables as cash') +
+    ' \u00b7 ' + o.closed.length + ' closed lots';
+
+  const setM = (id, val, useClass) => {
+    const el = document.getElementById(id);
+    el.textContent = val;
+    if (useClass !== undefined) {
+      el.className = 'metric-value ' + (useClass > 0 ? 'profit' : useClass < 0 ? 'loss' : '');
+    }
+  };
+  setM('m-total', signed(totalRealized), totalRealized);
+  setM('m-short', signed(totalShort), totalShort);
+  setM('m-long',  signed(totalLong),  totalLong);
+  setM('m-open',  money(openBasis));
+  document.getElementById('m-total-sub').textContent = o.closed.length + ' matches';
+  document.getElementById('m-open-sub').textContent  = o.openLots.length + ' open lots';
+
+  /* Realized by asset */
+  document.getElementById('tb-realized').innerHTML = o.realized.map(r =>
+    '<tr>' +
+      '<td><strong>' + r.asset + '</strong></td>' +
+      '<td class="num">' + qty(r.qty) + '</td>' +
+      '<td class="num">' + money(r.basis) + '</td>' +
+      '<td class="num">' + money(r.proceeds) + '</td>' +
+      '<td class="num">' + signed(r.short) + '</td>' +
+      '<td class="num">' + signed(r.long) + '</td>' +
+      '<td class="num"><span class="badge ' + cls(r.total) + '">' + signed(r.total) + '</span></td>' +
+    '</tr>').join('') ||
+    '<tr><td colspan="7" style="color:var(--muted)">No disposals matched.</td></tr>';
+
+  if (o.realized.length) {
+    const t = o.realized.reduce((a, r) => ({
+      basis: a.basis + r.basis, proceeds: a.proceeds + r.proceeds,
+      short: a.short + r.short, long: a.long + r.long, total: a.total + r.total
+    }), { basis: 0, proceeds: 0, short: 0, long: 0, total: 0 });
+    document.getElementById('tf-realized').innerHTML =
+      '<tr><td>Total</td><td></td>' +
+      '<td class="num">' + money(t.basis) + '</td><td class="num">' + money(t.proceeds) + '</td>' +
+      '<td class="num">' + signed(t.short) + '</td><td class="num">' + signed(t.long) + '</td>' +
+      '<td class="num">' + signed(t.total) + '</td></tr>';
+  }
+
+  /* Holdings */
+  document.getElementById('tb-holdings').innerHTML = o.holdings.map(h =>
+    '<tr>' +
+      '<td><strong>' + h.asset + '</strong>' + (h.tracked ? '' : ' <span class="tag st">cash</span>') + '</td>' +
+      '<td class="num">' + qty(h.inflow) + '</td>' +
+      '<td class="num">' + qty(h.outflow) + '</td>' +
+      '<td class="num">' + qty(h.inflow - h.outflow) + '</td>' +
+      '<td class="num">' + (h.tracked ? money(h.openBasis) : '&mdash;') + '</td>' +
+      '<td class="num">' + (h.tracked ? h.openLots : '&mdash;') + '</td>' +
+    '</tr>').join('');
+
+  /* Closed lots */
+  document.getElementById('tb-closed').innerHTML = o.closed.map(c =>
+    '<tr>' +
+      '<td class="num" style="text-align:left">' + c.lotId + '</td>' +
+      '<td><strong>' + c.asset + '</strong></td>' +
+      '<td class="num" style="text-align:left">' + c.disposalId + '</td>' +
+      '<td class="num" style="text-align:left">' + dstr(c.disposalDate) + '</td>' +
+      '<td class="num">' + money(c.disposalRate) + '</td>' +
+      '<td class="num" style="text-align:left">' + c.acqId + '</td>' +
+      '<td class="num" style="text-align:left">' + dstr(c.acqDate) + '</td>' +
+      '<td class="num">' + money(c.acqRate) + '</td>' +
+      '<td class="num">' + qty(c.beginningLot) + '</td>' +
+      '<td class="num"><strong>' + qty(c.matched) + '</strong></td>' +
+      '<td class="num">' + qty(c.endingLot) + '</td>' +
+      '<td class="num">' + money(c.costBasis) + '</td>' +
+      '<td class="num">' + money(c.proceeds) + '</td>' +
+      '<td class="num"><span class="badge ' + cls(c.realized) + '">' + signed(c.realized) + '</span></td>' +
+      '<td><span class="tag ' + (c.holdingPeriod === 'Long' ? 'lt' : 'st') + '">' + c.holdingPeriod + '</span></td>' +
+    '</tr>').join('') ||
+    '<tr><td colspan="15" style="color:var(--muted)">No closed lots.</td></tr>';
+
+  if (o.closed.length) {
+    const tb = o.closed.reduce((s, c) => s + c.costBasis, 0);
+    const tp = o.closed.reduce((s, c) => s + c.proceeds, 0);
+    document.getElementById('tf-closed').innerHTML =
+      '<tr><td colspan="11">Total</td>' +
+      '<td class="num">' + money(tb) + '</td><td class="num">' + money(tp) + '</td>' +
+      '<td class="num">' + signed(tp - tb) + '</td><td></td></tr>';
+  }
+
+  /* Open lots */
+  document.getElementById('tb-open').innerHTML = o.openLots.map(l => {
+    const days = (Date.now() - l.acqTs) / 86400000;
+    const hp = days >= LONG_TERM_DAYS ? 'Long' : 'Short';
+    return '<tr>' +
+      '<td class="num" style="text-align:left">' + l.lotId + '</td>' +
+      '<td><strong>' + l.asset + '</strong></td>' +
+      '<td style="color:var(--muted)">' + (l.exchange || '&mdash;') + '</td>' +
+      '<td class="num" style="text-align:left">' + l.acqId + '</td>' +
+      '<td class="num" style="text-align:left">' + dstr(l.acqDate) + '</td>' +
+      '<td class="num">' + qty(l.acqQty) + '</td>' +
+      '<td class="num">' + qty(l.acqQty - l.remaining) + '</td>' +
+      '<td class="num"><strong>' + qty(l.remaining) + '</strong></td>' +
+      '<td class="num">' + money(l.unitCost) + '</td>' +
+      '<td class="num">' + money(l.remaining * l.unitCost) + '</td>' +
+      '<td><span class="tag ' + (hp === 'Long' ? 'lt' : 'st') + '">' + hp + '</span></td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="11" style="color:var(--muted)">No open lots.</td></tr>';
+
+  if (o.openLots.length) {
+    const tot = o.openLots.reduce((s, l) => s + l.remaining * l.unitCost, 0);
+    document.getElementById('tf-open').innerHTML =
+      '<tr><td colspan="9">Total open cost basis</td><td class="num">' + money(tot) + '</td><td></td></tr>';
+  }
+
+  /* Sub-ledger */
+  document.getElementById('tb-ledger').innerHTML = o.legs.map(l =>
+    '<tr>' +
+      '<td class="num" style="text-align:left">' + l.txnId + '</td>' +
+      '<td class="num">' + l.legNo + '</td>' +
+      '<td class="num" style="text-align:left">' + dstr(l.date) + '</td>' +
+      '<td><strong>' + l.asset + '</strong></td>' +
+      '<td><span class="tag ' + l.dir + '">' + l.dir + '</span></td>' +
+      '<td class="num">' + qty(l.qty) + '</td>' +
+      '<td class="num">' + money(l.unitPrice) + '</td>' +
+      '<td class="num">' + signed(l.fiatValue) + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + l.priceSource + '</td>' +
+      '<td style="color:var(--muted)">' + (l.exchange || '&mdash;') + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + (l.note || '&mdash;') + '</td>' +
+    '</tr>').join('');
+
+  renderChecks(o);
+}
+
+function renderChecks(o) {
+  const parts = [];
+
+  // Control 1 - parity
+  if (o.parityBreaks.length) {
+    parts.push('<div class="flags-card"><div class="flags-label">&#9888; Parity breaks</div>' +
+      o.parityBreaks.map(b => '&bull; ' + b.txnId + ' - legs net to ' + money(b.net) + ' instead of zero').join('<br>') +
+      '</div>');
+  } else {
+    parts.push('<div class="ok-card">&#10003; Parity check passed - all ' + (o.legs.length / 2) +
+               ' transactions net to zero.</div>');
+  }
+
+  // Control 2 - unmatched disposals
+  if (o.unmatched.length) {
+    parts.push('<div class="flags-card"><div class="flags-label">&#9888; Unmatched disposals</div>' +
+      o.unmatched.map(u => '&bull; ' + u.txnId + ' - disposed ' + qty(u.qty) + ' ' + u.asset +
+                           ' with no acquisition lot to match against').join('<br>') +
+      '<div style="margin-top:10px;font-size:12px">This usually means the file is missing earlier history. ' +
+      'Lot matching must run from inception, so any gap makes cost basis understated.</div></div>');
+  } else {
+    parts.push('<div class="ok-card">&#10003; Every disposal matched to an acquisition lot - no unmatched quantity.</div>');
+  }
+
+  // Control 3 - parsing and pricing flags
+  if (o.flags.length) {
+    parts.push('<div class="flags-card"><div class="flags-label">&#9888; Rows excluded or unpriced</div>' +
+      o.flags.map(f => '&bull; ' + f).join('<br>') + '</div>');
+  } else {
+    parts.push('<div class="ok-card">&#10003; All rows parsed and priced - nothing excluded.</div>');
+  }
+
+  // Control 4 - arithmetic tie-out
+  const tb = o.closed.reduce((s, c) => s + c.costBasis, 0);
+  const tp = o.closed.reduce((s, c) => s + c.proceeds, 0);
+  const tr = o.closed.reduce((s, c) => s + c.realized, 0);
+  const diff = Math.abs((tp - tb) - tr);
+  parts.push('<div class="table-card">' +
+    '<div class="table-card-header">Arithmetic tie-out</div>' +
+    '<div class="table-wrap"><table><tbody>' +
+      '<tr><td>Total proceeds</td><td class="num">' + money(tp) + '</td></tr>' +
+      '<tr><td>Less: total cost basis consumed</td><td class="num">' + money(tb) + '</td></tr>' +
+      '<tr><td><strong>Realized gain / loss</strong></td><td class="num"><strong>' + signed(tp - tb) + '</strong></td></tr>' +
+      '<tr><td>Sum of closed-lot realized column</td><td class="num">' + signed(tr) + '</td></tr>' +
+      '<tr><td>Difference</td><td class="num">' +
+        (diff < 0.01 ? '<span class="badge profit">0.00 &#10003;</span>'
+                     : '<span class="badge loss">' + money(diff) + '</span>') +
+      '</td></tr>' +
+    '</tbody></table></div></div>');
+
+  document.getElementById('checks-content').innerHTML = parts.join('');
+}
+
+function showTab(name, btn) {
+  const panels = document.querySelectorAll('.tab-panel');
+  for (let i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+  const tabs = document.querySelectorAll('.tab');
+  for (let i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ===================================================================
+   AI COMMENTARY - narrative only, computed figures are passed in
+   =================================================================== */
+
+async function addCommentary(apiKey, o) {
+  const total = o.closed.reduce((s, c) => s + c.realized, 0);
+  const facts = {
+    method: o.method,
+    total_realized: +total.toFixed(2),
+    by_asset: o.realized.map(r => ({
+      asset: r.asset, realized: +r.total.toFixed(2),
+      short: +r.short.toFixed(2), long: +r.long.toFixed(2)
+    })),
+    open_positions: o.openLots.map(l => ({
+      asset: l.asset, qty: +l.remaining.toFixed(8), basis: +(l.remaining * l.unitCost).toFixed(2)
+    })),
+    issues: o.flags.length + o.unmatched.length + o.parityBreaks.length
+  };
+
+  const prompt =
+    'These figures were already calculated. Do not recalculate or restate them as a list.\n' +
+    'Write 3-4 sentences of plain-English commentary for a fund accountant: what drove the result, ' +
+    'what stands out, and one thing worth checking.\n' +
+    'Return only the prose, no preamble, no markdown.\n\n' +
+    JSON.stringify(facts);
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    if (!res.ok) return; // commentary is optional - never block the numbers
+    const data = await res.json();
+    const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    if (text) {
+      document.getElementById('ai-summary').textContent = text;
+      document.getElementById('ai-box').style.display = 'block';
+    }
+  } catch (e) { /* silent - the report stands on its own */ }
+}
+
+/* ===================================================================
+   CSV EXPORT
+   =================================================================== */
+
+function toCSV(headers, rows) {
+  const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+  return [headers.join(',')].concat(rows.map(r => r.map(esc).join(','))).join('\n');
+}
+
+function download(filename, text) {
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function downloadClosed() {
+  if (!engineOut) return;
+  const headers = ['lot_id','asset','disposal_id','disposal_date','disposal_rate','acquisition_id',
+                   'acquisition_date','acquisition_rate','beginning_lot_amount','matched_lot_amount',
+                   'ending_lot_amount','cost_basis','proceeds','realized_gain_loss','holding_period',
+                   'accounting_method'];
+  const rows = engineOut.closed.map(c => [c.lotId, c.asset, c.disposalId, dstr(c.disposalDate),
+    c.disposalRate.toFixed(8), c.acqId, dstr(c.acqDate), c.acqRate.toFixed(8),
+    c.beginningLot, c.matched, c.endingLot, c.costBasis.toFixed(2), c.proceeds.toFixed(2),
+    c.realized.toFixed(2), c.holdingPeriod, engineOut.method]);
+  download('closed_lots.csv', toCSV(headers, rows));
+}
+
+function downloadLedger() {
+  if (!engineOut) return;
+  const headers = ['txn_id','leg','date','asset','direction','quantity','unit_price','fiat_value',
+                   'price_source','exchange','note'];
+  const rows = engineOut.legs.map(l => [l.txnId, l.legNo, dstr(l.date), l.asset, l.dir,
+    l.qty, l.unitPrice.toFixed(8), l.fiatValue.toFixed(2), l.priceSource, l.exchange, l.note]);
+  download('sub_ledger.csv', toCSV(headers, rows));
+}
+
+/* ===================================================================
+   UI HELPERS
+   =================================================================== */
+
+function showLoading(on, text) {
+  document.getElementById('loading').classList.toggle('visible', on);
+  if (text) document.getElementById('loading-text').textContent = text;
+  document.getElementById('analyze-btn').disabled = on || parsedRows.length === 0;
+}
+function showError(msg) {
+  const b = document.getElementById('error-box');
+  b.textContent = msg; b.classList.add('visible');
+}
+function clearError() { document.getElementById('error-box').classList.remove('visible'); }
+function resetApp() {
+  parsedRows = []; engineOut = null;
+  document.getElementById('file-input').value = '';
+  document.getElementById('file-name').style.display = 'none';
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('ai-box').style.display = 'none';
+  clearError();
+}
+</script>
+</body>
+</html>
