@@ -62,6 +62,10 @@
   .card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
           padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow); }
 
+  .template-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .template-row .txt p { font-size: 13px; color: var(--muted); }
+  .template-row .txt strong { color: var(--navy); }
+
   /* ── Inputs ── */
   .input-row { display: flex; gap: 8px; align-items: center; }
   .input-row input { flex: 1; border: 1px solid var(--border); border-radius: var(--radius);
@@ -236,6 +240,14 @@
     <div class="step-num">1</div>
     <div class="step-text">Upload your trade file</div>
   </div>
+
+  <div class="card template-row">
+    <div class="txt">
+      <p><strong>New here?</strong> Download the template, fill it in with your trades, then upload it below.</p>
+    </div>
+    <button class="btn btn-outline" onclick="downloadTemplate()">Download CSV template</button>
+  </div>
+
   <div class="dropzone" id="dropzone">
     <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFileSelect(this.files[0])" />
     <div class="upload-icon">&#128194;</div>
@@ -250,6 +262,32 @@
   <!-- Step 2 -->
   <div class="step-label">
     <div class="step-num">2</div>
+    <div class="step-text">Asset code reference <span class="step-opt">&mdash; codes are auto-standardized on upload</span></div>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Standard code</th><th>Asset</th><th>Common exchange aliases we auto-fix</th></tr></thead>
+        <tbody>
+          <tr><td>BTC</td><td>Bitcoin</td><td><code>XBT</code> / <code>XXBT</code> (Kraken)</td></tr>
+          <tr><td>ETH</td><td>Ethereum</td><td><code>XETH</code> (Kraken)</td></tr>
+          <tr><td>USDT</td><td>Tether</td><td>&mdash;</td></tr>
+          <tr><td>XRP</td><td>XRP</td><td><code>XXRP</code> (Kraken)</td></tr>
+          <tr><td>BNB</td><td>BNB</td><td>&mdash;</td></tr>
+          <tr><td>SOL</td><td>Solana</td><td>&mdash;</td></tr>
+          <tr><td>USDC</td><td>USD Coin</td><td>&mdash;</td></tr>
+          <tr><td>DOGE</td><td>Dogecoin</td><td><code>XDG</code> / <code>XXDG</code> (Kraken)</td></tr>
+          <tr><td>TRX</td><td>TRON</td><td>&mdash;</td></tr>
+          <tr><td>ADA</td><td>Cardano</td><td>&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Ranked by approximate market cap, August 2026 &mdash; for reference only, not a live feed. Any asset code works; these ten just get automatic alias correction so the same coin doesn't get split into two rows by accident. Fiat aliases (<code>ZUSD</code> &rarr; <code>USD</code>, etc.) are handled too.</p>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step-label">
+    <div class="step-num">3</div>
     <div class="step-text">Accounting settings</div>
   </div>
   <div class="card">
@@ -274,9 +312,9 @@
     </div>
   </div>
 
-  <!-- Step 3 -->
+  <!-- Step 4 -->
   <div class="step-label">
-    <div class="step-num">3</div>
+    <div class="step-num">4</div>
     <div class="step-text">Anthropic API key <span class="step-opt">&mdash; optional, only for the written summary</span></div>
   </div>
   <div class="card">
@@ -287,9 +325,9 @@
     <p class="hint">All PnL math runs locally in your browser. The key is only used to generate the narrative commentary.</p>
   </div>
 
-  <!-- Step 4 -->
+  <!-- Step 5 -->
   <div class="step-label">
-    <div class="step-num">4</div>
+    <div class="step-num">5</div>
     <div class="step-text">Run</div>
   </div>
   <button class="btn btn-primary" id="analyze-btn" onclick="runAnalysis()" disabled>Run Lot Matching</button>
@@ -461,12 +499,27 @@ const LONG_TERM_DAYS = 365;
 // Tolerance for floating-point quantity comparisons
 const EPS = 1e-9;
 
-function isFiat(a)   { return FIAT_ASSETS.includes(String(a).toUpperCase()); }
-function isStable(a) { return STABLE_RATES[String(a).toUpperCase()] !== undefined; }
+// NEW: exchange-specific tickers that should collapse to one standard code,
+// so the same coin doesn't get split into two rows by accident.
+const ALIAS_MAP = {
+  'XBT':'BTC', 'XXBT':'BTC',
+  'XETH':'ETH',
+  'XXRP':'XRP',
+  'XDG':'DOGE', 'XXDG':'DOGE',
+  'ZUSD':'USD', 'ZEUR':'EUR', 'ZGBP':'GBP', 'ZCAD':'CAD', 'ZJPY':'JPY',
+  'XLTC':'LTC', 'XXLM':'XLM', 'XETC':'ETC', 'XREP':'REP', 'XZEC':'ZEC', 'XXMR':'XMR'
+};
+function normalizeAsset(a) {
+  const u = String(a || '').trim().toUpperCase();
+  return ALIAS_MAP[u] || u;
+}
+
+function isFiat(a)   { return FIAT_ASSETS.includes(normalizeAsset(a)); }
+function isStable(a) { return STABLE_RATES[normalizeAsset(a)] !== undefined; }
 
 // Returns the USD rate for an asset, or null if it needs an external price
 function knownRate(a) {
-  const u = String(a).toUpperCase();
+  const u = normalizeAsset(a);
   if (isFiat(u))   return 1.0;
   if (isStable(u)) return STABLE_RATES[u];
   return null;
@@ -610,16 +663,16 @@ function buildLedger(rows) {
     const date = parseDate(dateVal);
     if (!date) { flags.push(txnId + ': could not read date "' + dateVal + '" - row skipped.'); return; }
 
-    const baseAsset = pick(row, ['base_asset','base asset','baseasset','asset','asset code']).toUpperCase();
+    const baseAsset = normalizeAsset(pick(row, ['base_asset','base asset','baseasset','asset','asset code']));
     const baseQty   = num(pick(row, ['base_asset_amount','base asset amount','amount','quantity','qty']));
-    const counterAsset = pick(row, ['counter_asset','counter asset','quote_asset','quote asset','currency']).toUpperCase();
+    const counterAsset = normalizeAsset(pick(row, ['counter_asset','counter asset','quote_asset','quote asset','currency']));
     const counterQty   = num(pick(row, ['counter_asset_amount','counter asset amount','total','proceeds','cost']));
     const exchange = pick(row, ['exchange','venue','provider','provider name','account','account name']);
     const note     = pick(row, ['note','notes','memo','description']);
 
     // NEW: fee columns. A fee is optional - if absent, behaviour is identical to before.
     const feeAssetRaw = pick(row, ['fee_asset','fee asset','fee_asset_code']);
-    const feeAsset    = feeAssetRaw ? feeAssetRaw.toUpperCase() : '';
+    const feeAsset    = feeAssetRaw ? normalizeAsset(feeAssetRaw) : '';
     const feeAmount   = num(pick(row, ['fee_amount','fee asset amount','fee']));
     const hasFee       = !!feeAsset && feeAmount > 0;
 
@@ -1171,6 +1224,20 @@ async function addCommentary(apiKey, o) {
 function toCSV(headers, rows) {
   const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
   return [headers.join(',')].concat(rows.map(r => r.map(esc).join(','))).join('\n');
+}
+
+// NEW: lets a first-time user download a filled-in example instead of
+// guessing the column names from the hint text alone.
+function downloadTemplate() {
+  const headers = ['type','timestamp','base_asset','base_asset_amount','counter_asset','counter_asset_amount',
+                    'fee_asset','fee_amount','fmv_usd','fee_fmv_usd','exchange','note'];
+  const rows = [
+    ['buy','2025-01-15','BTC','0.5','USD','15000','USD','5','','','Coinbase','Initial BTC buy, fee in USD'],
+    ['buy','2025-02-10','ETH','2','USDT','4200','ETH','0.002','','','Binance','Fee paid in-kind (ETH)'],
+    ['sell','2025-06-01','BTC','0.2','USD','9000','','','','','Coinbase','Partial BTC sale, no fee'],
+    ['sell','2025-07-01','ETH','1','BTC','0.03','','','3200','','Kraken','ETH->BTC swap; fmv_usd = ETH price that day']
+  ];
+  download('trade_template.csv', toCSV(headers, rows));
 }
 
 function download(filename, text) {
