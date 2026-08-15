@@ -241,7 +241,7 @@
     <div class="upload-icon">&#128194;</div>
     <p><strong>Click to upload</strong> or drag and drop</p>
     <p>CSV or Excel &middot; type, timestamp, base_asset, base_asset_amount, price,<br>counter_asset, counter_asset_amount, exchange, note<br>
-       <span style="font-size:12px">Optional: <code>fmv_usd</code> &mdash; required for crypto-to-crypto trades</span></p>
+       <span style="font-size:12px">Optional: <code>fmv_usd</code> (crypto-to-crypto trades), <code>fee_asset</code> + <code>fee_amount</code> (trading fees), <code>fee_fmv_usd</code> (fee paid in an unpriced asset)</span></p>
     <div id="file-name" class="file-badge" style="display:none;">
       <span>&#128196;</span><span id="file-name-text"></span>
     </div>
@@ -617,6 +617,12 @@ function buildLedger(rows) {
     const exchange = pick(row, ['exchange','venue','provider','provider name','account','account name']);
     const note     = pick(row, ['note','notes','memo','description']);
 
+    // NEW: fee columns. A fee is optional - if absent, behaviour is identical to before.
+    const feeAssetRaw = pick(row, ['fee_asset','fee asset','fee_asset_code']);
+    const feeAsset    = feeAssetRaw ? feeAssetRaw.toUpperCase() : '';
+    const feeAmount   = num(pick(row, ['fee_amount','fee asset amount','fee']));
+    const hasFee       = !!feeAsset && feeAmount > 0;
+
     if (!baseAsset || !(baseQty > 0)) {
       flags.push(txnId + ': missing base asset or amount - row skipped.'); return;
     }
@@ -644,7 +650,53 @@ function buildLedger(rows) {
       }
     }
 
-    const baseUnitPrice    = fiatValue / baseQty;
+    /* --- NEW: price the fee ---
+       Per the parity bible, the fee always adjusts the crypto leg, never the
+       fiat leg. Two cases:
+       A) fee is fiat / stablecoin / a priced third asset -> its fiat value
+          shifts the base leg's cost (buy) or proceeds (sell) directly.
+       B) fee is in the SAME asset as the base leg -> solved jointly with the
+          base price (the classic "fee taken out of what you bought/sold"
+          case). This also creates a tiny extra disposal leg that lot-matches
+          like any other sale, which is the technically correct treatment. */
+    let baseUnitPrice, feeUnitPrice = 0, feeLegNeeded = false;
+    if (hasFee) {
+      const feeIsSameAsBase = feeAsset === baseAsset;
+      if (feeIsSameAsBase) {
+        const denom = isBuy ? (baseQty - feeAmount) : (baseQty + feeAmount);
+        if (denom <= EPS) {
+          flags.push(txnId + ': fee (' + feeAmount + ' ' + feeAsset + ') is >= trade quantity - fee ignored.');
+          baseUnitPrice = fiatValue / baseQty;
+        } else {
+          baseUnitPrice = fiatValue / denom;
+          feeUnitPrice  = baseUnitPrice;
+          feeLegNeeded  = true;
+        }
+      } else {
+        const feeRate = knownRate(feeAsset);
+        let feeFiat = 0;
+        if (feeRate !== null) {
+          feeFiat = feeAmount * feeRate;
+          feeUnitPrice = feeRate;
+          feeLegNeeded = true;
+        } else {
+          const feeFmv = num(pick(row, ['fee_fmv_usd','fee_fmv']));
+          if (feeFmv > 0) {
+            feeFiat = feeAmount * feeFmv;
+            feeUnitPrice = feeFmv;
+            feeLegNeeded = true;
+          } else {
+            flags.push(txnId + ': fee (' + feeAmount + ' ' + feeAsset + ') could not be priced - excluded, ' +
+                       'cost basis/proceeds may be understated. Add a fee_fmv_usd column to price it.');
+          }
+        }
+        const effectiveBaseFiat = isBuy ? (fiatValue + feeFiat) : (fiatValue - feeFiat);
+        baseUnitPrice = effectiveBaseFiat / baseQty;
+      }
+    } else {
+      baseUnitPrice = fiatValue / baseQty;
+    }
+
     const counterUnitPrice = counterQty > 0 ? fiatValue / counterQty : 0;
 
     // A buy takes the counter asset out and brings the base asset in; a sell is the reverse.
@@ -661,10 +713,18 @@ function buildLedger(rows) {
     // Leg ordering follows the money: what leaves first, then what arrives.
     if (isBuy) {
       legs.push(mk(1, counterAsset, counterQty, counterUnitPrice, counterDir, priceSource));
-      legs.push(mk(2, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource));
+      legs.push(mk(2, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource + (hasFee && feeLegNeeded ? ' (fee-adj.)' : '')));
     } else {
-      legs.push(mk(1, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource));
+      legs.push(mk(1, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource + (hasFee && feeLegNeeded ? ' (fee-adj.)' : '')));
       legs.push(mk(2, counterAsset, counterQty, counterUnitPrice, counterDir, priceSource));
+    }
+    // NEW: a third leg for the fee itself, when it could be priced. It flows
+    // out like any disposal, so Stage 2's lot matcher handles it for free -
+    // no changes needed there.
+    if (feeLegNeeded) {
+      const feeSrc = (feeAsset === baseAsset) ? 'derived with base leg'
+                    : (knownRate(feeAsset) !== null ? 'fiat/stable rate' : 'fee_fmv_usd column');
+      legs.push(mk(3, feeAsset, feeAmount, feeUnitPrice, 'out', feeSrc));
     }
   });
 
