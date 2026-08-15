@@ -165,13 +165,6 @@
   .metric-value.loss   { color: var(--loss); }
   .metric-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
 
-  /* ── AI box ── */
-  .ai-box { background: var(--white); border: 1px solid var(--border); border-left: 3px solid var(--blue);
-            border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow); }
-  .ai-box-label { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase;
-                  letter-spacing: .07em; margin-bottom: 10px; }
-  .ai-box p { font-size: 14px; color: var(--text); line-height: 1.75; white-space: pre-wrap; }
-
   /* ── Tables ── */
   .table-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
                 box-shadow: var(--shadow); overflow: hidden; margin-bottom: 1.25rem; }
@@ -315,19 +308,6 @@
   <!-- Step 4 -->
   <div class="step-label">
     <div class="step-num">4</div>
-    <div class="step-text">Anthropic API key <span class="step-opt">&mdash; optional, only for the written summary</span></div>
-  </div>
-  <div class="card">
-    <div class="input-row">
-      <input type="password" id="api-key" placeholder="sk-ant-api03-...  (leave blank to skip)" autocomplete="off" />
-      <button class="btn btn-outline" onclick="toggleKeyVisibility()">Show</button>
-    </div>
-    <p class="hint">All PnL math runs locally in your browser. The key is only used to generate the narrative commentary.</p>
-  </div>
-
-  <!-- Step 5 -->
-  <div class="step-label">
-    <div class="step-num">5</div>
     <div class="step-text">Run</div>
   </div>
   <button class="btn btn-primary" id="analyze-btn" onclick="runAnalysis()" disabled>Run Lot Matching</button>
@@ -376,11 +356,6 @@
           <div class="metric-value" id="m-open">&mdash;</div>
           <div class="metric-sub" id="m-open-sub"></div>
         </div>
-      </div>
-
-      <div class="ai-box" id="ai-box" style="display:none;">
-        <div class="ai-box-label">&#10022; AI commentary</div>
-        <p id="ai-summary"></p>
       </div>
 
       <div class="table-card">
@@ -534,14 +509,6 @@ let engineOut  = null; // result of the last run, kept for CSV export
 /* ===================================================================
    FILE HANDLING
    =================================================================== */
-
-function toggleKeyVisibility() {
-  const input = document.getElementById('api-key');
-  const btn = event.target;
-  const hidden = input.type === 'password';
-  input.type = hidden ? 'text' : 'password';
-  btn.textContent = hidden ? 'Hide' : 'Show';
-}
 
 const dz = document.getElementById('dropzone');
 dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
@@ -944,13 +911,6 @@ async function runAnalysis() {
     render(engineOut);
     document.getElementById('results').classList.add('visible');
 
-    // Optional narrative - Claude only writes prose, it never touches the numbers
-    const apiKey = document.getElementById('api-key').value.trim();
-    if (apiKey.indexOf('sk-') === 0) {
-      showLoading(true, 'Writing commentary...');
-      await addCommentary(apiKey, engineOut);
-    }
-
   } catch (err) {
     showError(err.message);
   } finally {
@@ -1167,57 +1127,6 @@ function showTab(name, btn) {
 }
 
 /* ===================================================================
-   AI COMMENTARY - narrative only, computed figures are passed in
-   =================================================================== */
-
-async function addCommentary(apiKey, o) {
-  const total = o.closed.reduce((s, c) => s + c.realized, 0);
-  const facts = {
-    method: o.method,
-    total_realized: +total.toFixed(2),
-    by_asset: o.realized.map(r => ({
-      asset: r.asset, realized: +r.total.toFixed(2),
-      short: +r.short.toFixed(2), long: +r.long.toFixed(2)
-    })),
-    open_positions: o.openLots.map(l => ({
-      asset: l.asset, qty: +l.remaining.toFixed(8), basis: +(l.remaining * l.unitCost).toFixed(2)
-    })),
-    issues: o.flags.length + o.unmatched.length + o.parityBreaks.length
-  };
-
-  const prompt =
-    'These figures were already calculated. Do not recalculate or restate them as a list.\n' +
-    'Write 3-4 sentences of plain-English commentary for a fund accountant: what drove the result, ' +
-    'what stands out, and one thing worth checking.\n' +
-    'Return only the prose, no preamble, no markdown.\n\n' +
-    JSON.stringify(facts);
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 400,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    if (!res.ok) return; // commentary is optional - never block the numbers
-    const data = await res.json();
-    const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
-    if (text) {
-      document.getElementById('ai-summary').textContent = text;
-      document.getElementById('ai-box').style.display = 'block';
-    }
-  } catch (e) { /* silent - the report stands on its own */ }
-}
-
-/* ===================================================================
    CSV EXPORT
    =================================================================== */
 
@@ -1291,7 +1200,6 @@ function resetApp() {
   document.getElementById('file-name').style.display = 'none';
   document.getElementById('analyze-btn').disabled = true;
   document.getElementById('results').classList.remove('visible');
-  document.getElementById('ai-box').style.display = 'none';
   clearError();
 }
 </script>
