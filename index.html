@@ -62,6 +62,10 @@
   .card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
           padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow); }
 
+  .template-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .template-row .txt p { font-size: 13px; color: var(--muted); }
+  .template-row .txt strong { color: var(--navy); }
+
   /* ── Inputs ── */
   .input-row { display: flex; gap: 8px; align-items: center; }
   .input-row input { flex: 1; border: 1px solid var(--border); border-radius: var(--radius);
@@ -161,13 +165,6 @@
   .metric-value.loss   { color: var(--loss); }
   .metric-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
 
-  /* ── AI box ── */
-  .ai-box { background: var(--white); border: 1px solid var(--border); border-left: 3px solid var(--blue);
-            border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow); }
-  .ai-box-label { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase;
-                  letter-spacing: .07em; margin-bottom: 10px; }
-  .ai-box p { font-size: 14px; color: var(--text); line-height: 1.75; white-space: pre-wrap; }
-
   /* ── Tables ── */
   .table-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
                 box-shadow: var(--shadow); overflow: hidden; margin-bottom: 1.25rem; }
@@ -236,12 +233,20 @@
     <div class="step-num">1</div>
     <div class="step-text">Upload your trade file</div>
   </div>
+
+  <div class="card template-row">
+    <div class="txt">
+      <p><strong>New here?</strong> Download the template, fill it in with your trades, then upload it below.</p>
+    </div>
+    <button class="btn btn-outline" onclick="downloadTemplate()">Download CSV template</button>
+  </div>
+
   <div class="dropzone" id="dropzone">
     <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFileSelect(this.files[0])" />
     <div class="upload-icon">&#128194;</div>
     <p><strong>Click to upload</strong> or drag and drop</p>
     <p>CSV or Excel &middot; type, timestamp, base_asset, base_asset_amount, price,<br>counter_asset, counter_asset_amount, exchange, note<br>
-       <span style="font-size:12px">Optional: <code>fmv_usd</code> &mdash; required for crypto-to-crypto trades</span></p>
+       <span style="font-size:12px">Optional: <code>fmv_usd</code> (crypto-to-crypto trades), <code>fee_asset</code> + <code>fee_amount</code> (trading fees), <code>fee_fmv_usd</code> (fee paid in an unpriced asset)</span></p>
     <div id="file-name" class="file-badge" style="display:none;">
       <span>&#128196;</span><span id="file-name-text"></span>
     </div>
@@ -250,6 +255,32 @@
   <!-- Step 2 -->
   <div class="step-label">
     <div class="step-num">2</div>
+    <div class="step-text">Asset code reference <span class="step-opt">&mdash; codes are auto-standardized on upload</span></div>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Standard code</th><th>Asset</th><th>Common exchange aliases we auto-fix</th></tr></thead>
+        <tbody>
+          <tr><td>BTC</td><td>Bitcoin</td><td><code>XBT</code> / <code>XXBT</code> (Kraken)</td></tr>
+          <tr><td>ETH</td><td>Ethereum</td><td><code>XETH</code> (Kraken)</td></tr>
+          <tr><td>USDT</td><td>Tether</td><td>&mdash;</td></tr>
+          <tr><td>XRP</td><td>XRP</td><td><code>XXRP</code> (Kraken)</td></tr>
+          <tr><td>BNB</td><td>BNB</td><td>&mdash;</td></tr>
+          <tr><td>SOL</td><td>Solana</td><td>&mdash;</td></tr>
+          <tr><td>USDC</td><td>USD Coin</td><td>&mdash;</td></tr>
+          <tr><td>DOGE</td><td>Dogecoin</td><td><code>XDG</code> / <code>XXDG</code> (Kraken)</td></tr>
+          <tr><td>TRX</td><td>TRON</td><td>&mdash;</td></tr>
+          <tr><td>ADA</td><td>Cardano</td><td>&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Ranked by approximate market cap, August 2026 &mdash; for reference only, not a live feed. Any asset code works; these ten just get automatic alias correction so the same coin doesn't get split into two rows by accident. Fiat aliases (<code>ZUSD</code> &rarr; <code>USD</code>, etc.) are handled too.</p>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step-label">
+    <div class="step-num">3</div>
     <div class="step-text">Accounting settings</div>
   </div>
   <div class="card">
@@ -272,19 +303,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- Step 3 -->
-  <div class="step-label">
-    <div class="step-num">3</div>
-    <div class="step-text">Anthropic API key <span class="step-opt">&mdash; optional, only for the written summary</span></div>
-  </div>
-  <div class="card">
-    <div class="input-row">
-      <input type="password" id="api-key" placeholder="sk-ant-api03-...  (leave blank to skip)" autocomplete="off" />
-      <button class="btn btn-outline" onclick="toggleKeyVisibility()">Show</button>
-    </div>
-    <p class="hint">All PnL math runs locally in your browser. The key is only used to generate the narrative commentary.</p>
   </div>
 
   <!-- Step 4 -->
@@ -338,11 +356,6 @@
           <div class="metric-value" id="m-open">&mdash;</div>
           <div class="metric-sub" id="m-open-sub"></div>
         </div>
-      </div>
-
-      <div class="ai-box" id="ai-box" style="display:none;">
-        <div class="ai-box-label">&#10022; AI commentary</div>
-        <p id="ai-summary"></p>
       </div>
 
       <div class="table-card">
@@ -461,12 +474,27 @@ const LONG_TERM_DAYS = 365;
 // Tolerance for floating-point quantity comparisons
 const EPS = 1e-9;
 
-function isFiat(a)   { return FIAT_ASSETS.includes(String(a).toUpperCase()); }
-function isStable(a) { return STABLE_RATES[String(a).toUpperCase()] !== undefined; }
+// NEW: exchange-specific tickers that should collapse to one standard code,
+// so the same coin doesn't get split into two rows by accident.
+const ALIAS_MAP = {
+  'XBT':'BTC', 'XXBT':'BTC',
+  'XETH':'ETH',
+  'XXRP':'XRP',
+  'XDG':'DOGE', 'XXDG':'DOGE',
+  'ZUSD':'USD', 'ZEUR':'EUR', 'ZGBP':'GBP', 'ZCAD':'CAD', 'ZJPY':'JPY',
+  'XLTC':'LTC', 'XXLM':'XLM', 'XETC':'ETC', 'XREP':'REP', 'XZEC':'ZEC', 'XXMR':'XMR'
+};
+function normalizeAsset(a) {
+  const u = String(a || '').trim().toUpperCase();
+  return ALIAS_MAP[u] || u;
+}
+
+function isFiat(a)   { return FIAT_ASSETS.includes(normalizeAsset(a)); }
+function isStable(a) { return STABLE_RATES[normalizeAsset(a)] !== undefined; }
 
 // Returns the USD rate for an asset, or null if it needs an external price
 function knownRate(a) {
-  const u = String(a).toUpperCase();
+  const u = normalizeAsset(a);
   if (isFiat(u))   return 1.0;
   if (isStable(u)) return STABLE_RATES[u];
   return null;
@@ -481,14 +509,6 @@ let engineOut  = null; // result of the last run, kept for CSV export
 /* ===================================================================
    FILE HANDLING
    =================================================================== */
-
-function toggleKeyVisibility() {
-  const input = document.getElementById('api-key');
-  const btn = event.target;
-  const hidden = input.type === 'password';
-  input.type = hidden ? 'text' : 'password';
-  btn.textContent = hidden ? 'Hide' : 'Show';
-}
 
 const dz = document.getElementById('dropzone');
 dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
@@ -610,12 +630,18 @@ function buildLedger(rows) {
     const date = parseDate(dateVal);
     if (!date) { flags.push(txnId + ': could not read date "' + dateVal + '" - row skipped.'); return; }
 
-    const baseAsset = pick(row, ['base_asset','base asset','baseasset','asset','asset code']).toUpperCase();
+    const baseAsset = normalizeAsset(pick(row, ['base_asset','base asset','baseasset','asset','asset code']));
     const baseQty   = num(pick(row, ['base_asset_amount','base asset amount','amount','quantity','qty']));
-    const counterAsset = pick(row, ['counter_asset','counter asset','quote_asset','quote asset','currency']).toUpperCase();
+    const counterAsset = normalizeAsset(pick(row, ['counter_asset','counter asset','quote_asset','quote asset','currency']));
     const counterQty   = num(pick(row, ['counter_asset_amount','counter asset amount','total','proceeds','cost']));
     const exchange = pick(row, ['exchange','venue','provider','provider name','account','account name']);
     const note     = pick(row, ['note','notes','memo','description']);
+
+    // NEW: fee columns. A fee is optional - if absent, behaviour is identical to before.
+    const feeAssetRaw = pick(row, ['fee_asset','fee asset','fee_asset_code']);
+    const feeAsset    = feeAssetRaw ? normalizeAsset(feeAssetRaw) : '';
+    const feeAmount   = num(pick(row, ['fee_amount','fee asset amount','fee']));
+    const hasFee       = !!feeAsset && feeAmount > 0;
 
     if (!baseAsset || !(baseQty > 0)) {
       flags.push(txnId + ': missing base asset or amount - row skipped.'); return;
@@ -644,7 +670,53 @@ function buildLedger(rows) {
       }
     }
 
-    const baseUnitPrice    = fiatValue / baseQty;
+    /* --- NEW: price the fee ---
+       Per the parity bible, the fee always adjusts the crypto leg, never the
+       fiat leg. Two cases:
+       A) fee is fiat / stablecoin / a priced third asset -> its fiat value
+          shifts the base leg's cost (buy) or proceeds (sell) directly.
+       B) fee is in the SAME asset as the base leg -> solved jointly with the
+          base price (the classic "fee taken out of what you bought/sold"
+          case). This also creates a tiny extra disposal leg that lot-matches
+          like any other sale, which is the technically correct treatment. */
+    let baseUnitPrice, feeUnitPrice = 0, feeLegNeeded = false;
+    if (hasFee) {
+      const feeIsSameAsBase = feeAsset === baseAsset;
+      if (feeIsSameAsBase) {
+        const denom = isBuy ? (baseQty - feeAmount) : (baseQty + feeAmount);
+        if (denom <= EPS) {
+          flags.push(txnId + ': fee (' + feeAmount + ' ' + feeAsset + ') is >= trade quantity - fee ignored.');
+          baseUnitPrice = fiatValue / baseQty;
+        } else {
+          baseUnitPrice = fiatValue / denom;
+          feeUnitPrice  = baseUnitPrice;
+          feeLegNeeded  = true;
+        }
+      } else {
+        const feeRate = knownRate(feeAsset);
+        let feeFiat = 0;
+        if (feeRate !== null) {
+          feeFiat = feeAmount * feeRate;
+          feeUnitPrice = feeRate;
+          feeLegNeeded = true;
+        } else {
+          const feeFmv = num(pick(row, ['fee_fmv_usd','fee_fmv']));
+          if (feeFmv > 0) {
+            feeFiat = feeAmount * feeFmv;
+            feeUnitPrice = feeFmv;
+            feeLegNeeded = true;
+          } else {
+            flags.push(txnId + ': fee (' + feeAmount + ' ' + feeAsset + ') could not be priced - excluded, ' +
+                       'cost basis/proceeds may be understated. Add a fee_fmv_usd column to price it.');
+          }
+        }
+        const effectiveBaseFiat = isBuy ? (fiatValue + feeFiat) : (fiatValue - feeFiat);
+        baseUnitPrice = effectiveBaseFiat / baseQty;
+      }
+    } else {
+      baseUnitPrice = fiatValue / baseQty;
+    }
+
     const counterUnitPrice = counterQty > 0 ? fiatValue / counterQty : 0;
 
     // A buy takes the counter asset out and brings the base asset in; a sell is the reverse.
@@ -661,10 +733,18 @@ function buildLedger(rows) {
     // Leg ordering follows the money: what leaves first, then what arrives.
     if (isBuy) {
       legs.push(mk(1, counterAsset, counterQty, counterUnitPrice, counterDir, priceSource));
-      legs.push(mk(2, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource));
+      legs.push(mk(2, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource + (hasFee && feeLegNeeded ? ' (fee-adj.)' : '')));
     } else {
-      legs.push(mk(1, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource));
+      legs.push(mk(1, baseAsset,    baseQty,    baseUnitPrice,    baseDir,    priceSource + (hasFee && feeLegNeeded ? ' (fee-adj.)' : '')));
       legs.push(mk(2, counterAsset, counterQty, counterUnitPrice, counterDir, priceSource));
+    }
+    // NEW: a third leg for the fee itself, when it could be priced. It flows
+    // out like any disposal, so Stage 2's lot matcher handles it for free -
+    // no changes needed there.
+    if (feeLegNeeded) {
+      const feeSrc = (feeAsset === baseAsset) ? 'derived with base leg'
+                    : (knownRate(feeAsset) !== null ? 'fiat/stable rate' : 'fee_fmv_usd column');
+      legs.push(mk(3, feeAsset, feeAmount, feeUnitPrice, 'out', feeSrc));
     }
   });
 
@@ -830,13 +910,6 @@ async function runAnalysis() {
 
     render(engineOut);
     document.getElementById('results').classList.add('visible');
-
-    // Optional narrative - Claude only writes prose, it never touches the numbers
-    const apiKey = document.getElementById('api-key').value.trim();
-    if (apiKey.indexOf('sk-') === 0) {
-      showLoading(true, 'Writing commentary...');
-      await addCommentary(apiKey, engineOut);
-    }
 
   } catch (err) {
     showError(err.message);
@@ -1054,63 +1127,26 @@ function showTab(name, btn) {
 }
 
 /* ===================================================================
-   AI COMMENTARY - narrative only, computed figures are passed in
-   =================================================================== */
-
-async function addCommentary(apiKey, o) {
-  const total = o.closed.reduce((s, c) => s + c.realized, 0);
-  const facts = {
-    method: o.method,
-    total_realized: +total.toFixed(2),
-    by_asset: o.realized.map(r => ({
-      asset: r.asset, realized: +r.total.toFixed(2),
-      short: +r.short.toFixed(2), long: +r.long.toFixed(2)
-    })),
-    open_positions: o.openLots.map(l => ({
-      asset: l.asset, qty: +l.remaining.toFixed(8), basis: +(l.remaining * l.unitCost).toFixed(2)
-    })),
-    issues: o.flags.length + o.unmatched.length + o.parityBreaks.length
-  };
-
-  const prompt =
-    'These figures were already calculated. Do not recalculate or restate them as a list.\n' +
-    'Write 3-4 sentences of plain-English commentary for a fund accountant: what drove the result, ' +
-    'what stands out, and one thing worth checking.\n' +
-    'Return only the prose, no preamble, no markdown.\n\n' +
-    JSON.stringify(facts);
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 400,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    if (!res.ok) return; // commentary is optional - never block the numbers
-    const data = await res.json();
-    const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
-    if (text) {
-      document.getElementById('ai-summary').textContent = text;
-      document.getElementById('ai-box').style.display = 'block';
-    }
-  } catch (e) { /* silent - the report stands on its own */ }
-}
-
-/* ===================================================================
    CSV EXPORT
    =================================================================== */
 
 function toCSV(headers, rows) {
   const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
   return [headers.join(',')].concat(rows.map(r => r.map(esc).join(','))).join('\n');
+}
+
+// NEW: lets a first-time user download a filled-in example instead of
+// guessing the column names from the hint text alone.
+function downloadTemplate() {
+  const headers = ['type','timestamp','base_asset','base_asset_amount','counter_asset','counter_asset_amount',
+                    'fee_asset','fee_amount','fmv_usd','fee_fmv_usd','exchange','note'];
+  const rows = [
+    ['buy','2025-01-15','BTC','0.5','USD','15000','USD','5','','','Coinbase','Initial BTC buy, fee in USD'],
+    ['buy','2025-02-10','ETH','2','USDT','4200','ETH','0.002','','','Binance','Fee paid in-kind (ETH)'],
+    ['sell','2025-06-01','BTC','0.2','USD','9000','','','','','Coinbase','Partial BTC sale, no fee'],
+    ['sell','2025-07-01','ETH','1','BTC','0.03','','','3200','','Kraken','ETH->BTC swap; fmv_usd = ETH price that day']
+  ];
+  download('trade_template.csv', toCSV(headers, rows));
 }
 
 function download(filename, text) {
@@ -1164,7 +1200,6 @@ function resetApp() {
   document.getElementById('file-name').style.display = 'none';
   document.getElementById('analyze-btn').disabled = true;
   document.getElementById('results').classList.remove('visible');
-  document.getElementById('ai-box').style.display = 'none';
   clearError();
 }
 </script>
